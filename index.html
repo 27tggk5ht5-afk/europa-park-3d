@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#111827">
+<title>Europa-Park 3D Explorer</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#87b9d8;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;touch-action:none}
+#c{display:block;width:100%;height:100%}
+#hud{position:fixed;inset:0;pointer-events:none}
+.top{position:absolute;top:env(safe-area-inset-top,12px);left:12px;right:12px;display:flex;justify-content:space-between;align-items:center}
+.badge{background:#111827dd;color:white;padding:9px 13px;border-radius:14px;font-weight:700;font-size:14px;backdrop-filter:blur(8px)}
+#hint{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:#111827cc;color:#fff;padding:8px 12px;border-radius:12px;font-size:12px;white-space:nowrap}
+#joy{position:absolute;left:22px;bottom:35px;width:132px;height:132px;border-radius:50%;background:#ffffff38;border:2px solid #ffffff66;pointer-events:auto}
+#knob{position:absolute;width:58px;height:58px;left:37px;top:37px;border-radius:50%;background:#fff;box-shadow:0 4px 18px #0005}
+#cam{position:absolute;right:18px;bottom:38px;width:64px;height:64px;border:0;border-radius:50%;background:#111827cc;color:white;font-size:26px;pointer-events:auto}
+#reset{position:absolute;right:18px;top:62px;border:0;border-radius:12px;background:#111827cc;color:#fff;padding:9px 12px;font-weight:700;pointer-events:auto}
+#title{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:white;text-align:center;text-shadow:0 3px 10px #000;display:none}
+#title h1{font-size:30px;margin:0 0 6px}.small{font-size:13px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div class="top"><div class="badge">EUROPA-PARK 3D</div><div class="badge" id="area">Eingang</div></div>
+  <button id="reset">↻</button>
+  <div id="joy"><div id="knob"></div></div>
+  <button id="cam">↻</button>
+  <div id="hint">Joystick: bewegen · Wischen: Kamera drehen</div>
+</div>
+
+<script>
+/* Standalone WebGL 3D engine — no external libraries required */
+const canvas=document.getElementById('c'), gl=canvas.getContext('webgl',{antialias:true,alpha:false});
+if(!gl){document.body.innerHTML='<div style="padding:30px;color:white;background:#111827;height:100%;font-family:sans-serif">WebGL wird auf diesem Gerät nicht unterstützt.</div>';}
+
+const V=`attribute vec3 p; attribute vec3 n; uniform mat4 P,VW,M; uniform vec3 color; varying vec3 N,W; void main(){vec4 w=M*vec4(p,1.0);W=w.xyz;N=mat3(M)*n;gl_Position=P*VW*w;}`;
+const F=`precision mediump float; varying vec3 N,W; uniform vec3 color; uniform vec3 sun; void main(){float l=max(dot(normalize(N),normalize(sun)),0.0); float a=.28; vec3 c=color*(a+.72*l); float fog=clamp((W.y+8.0)/120.0,0.0,1.0); gl_FragColor=vec4(c,1.0);}`;
+function sh(t,s){let x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);return x}
+const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,V));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,F));gl.linkProgram(pr);gl.useProgram(pr);
+const ap=gl.getAttribLocation(pr,'p'), an=gl.getAttribLocation(pr,'n'), uP=gl.getUniformLocation(pr,'P'),uV=gl.getUniformLocation(pr,'VW'),uM=gl.getUniformLocation(pr,'M'),uC=gl.getUniformLocation(pr,'color'),uS=gl.getUniformLocation(pr,'sun');
+function buf(data,loc,size){let b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,size,gl.FLOAT,false,0,0);return b}
+const verts=[], norms=[];
+function addBox(x,y,z,sx,sy,sz,c){
+ const v=[[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]];
+ const f=[[0,1,2,3,0,0,-1],[5,4,7,6,0,0,1],[4,0,3,7,-1,0,0],[1,5,6,2,1,0,0],[3,2,6,7,0,1,0],[4,5,1,0,0,-1,0]];
+ for(const q of f){for(let i=0;i<4;i++){let a=v[q[i]],b=[x+a[0]*sx,y+a[1]*sy,z+a[2]*sz];verts.push(...b);norms.push(q.slice(4));}}
+ for(let i=0;i<6;i++) for(let j=0;j<2;j++) {let k=(i*4), ids=[k,k+1,k+2,k,k+2,k+3]; indices.push(...ids)}
+ objects.push({start:indices.length-36,count:36,c});
+}
+const indices=[],objects=[];
+function cylinder(x,y,z,r,h,c,segments=18){
+ let base=verts.length/3, ib=[];
+ for(let i=0;i<=segments;i++){let a=i/segments*Math.PI*2,co=Math.cos(a),si=Math.sin(a);verts.push(x+r*co,y-h/2,z+r*si);norms.push(co,0,si);verts.push(x+r*co,y+h/2,z+r*si);norms.push(co,0,si);}
+ for(let i=0;i<segments;i++){let k=base+i*2;ib.push(k,k+1,k+3,k,k+3,k+2)}
+ const st=indices.length;indices.push(...ib);objects.push({start:st,count:ib.length,c});
+}
+function road(x,z,w,d){addBox(x,-.18,z,w,.12,d,[.48,.46,.40])}
+function tree(x,z,s=1){cylinder(x,.8*s,z,.16*s,1.6*s,[.30,.18,.08],10);cylinder(x,2.0*s,z,.75*s,1.8*s,[.08,.34,.13],12)}
+function lamp(x,z){cylinder(x,.8,z,.035,1.6,[.10,.10,.11],8);cylinder(x,1.7,z,.18,.08,[1,.82,.25],10)}
+function sign(x,z,textColor){addBox(x,1.0,z,.12,.8,.06,textColor)}
+function coaster(x,z,r,c){
+ let N=34, last=-1, st=indices.length;
+ for(let i=0;i<N;i++){let a=i/N*Math.PI*2,xx=x+Math.cos(a)*r,zz=z+Math.sin(a)*r*.55;cylinder(xx,.35,zz,.045,.7,c,8); if(last>=0){/* supports only */}last=i}
+ // rail as small connected blocks
+ for(let i=0;i<N;i++){let a=i/N*Math.PI*2,xx=x+Math.cos(a)*r,zz=z+Math.sin(a)*r*.55;addBox(xx,.82,zz,.08,.05,.08,c)}
+}
+function entrance(){
+ addBox(0,3,-42,10,3,2,[.80,.69,.50]);
+ addBox(0,6,-42,7,1.3,1.2,[.18,.16,.15]);
+ for(let x of [-7,-3.5,3.5,7]) cylinder(x,3,-44,.55,6,[.75,.62,.43],16);
+ // three gates
+ for(let x of [-5,0,5]){addBox(x,1.8,-44,1.8,1.8,.45,[.12,.11,.10]);addBox(x,4.0,-44,1.8,.35,.45,[.12,.11,.10]);}
+ addBox(0,5.8,-44,5,.25,.25,[.92,.78,.40]);
+ for(let x of [-8,-6,-4,-2,0,2,4,6,8]){addBox(x,1.0,-39.8,.18,.8,.18,[.55,.52,.45])}
+}
+function lake(x,z,w,d){addBox(x,-.3,z,w,.05,d,[.05,.35,.56])}
+function district(x,z,w,d,c){
+ addBox(x,.15,z,w,.25,d,[.38,.34,.27]);
+ for(let i=-2;i<=2;i++) for(let j=-1;j<=1;j++) tree(x+i*3.2,z+j*3.5,.75);
+}
+entrance();
+road(0,-27,3,15); road(0,-13,3,12); road(0,0,3,22); road(-11,0,10,2.4); road(11,0,10,2.4);
+lake(20,3,7,13);
+district(-11,-7,8,7,[.5,.4,.2]); district(11,-9,8,7,[.4,.3,.2]);
+addBox(-11,2,-7,4,3,3,[.70,.22,.12]); // Italy
+addBox(11,2,-9,4,3,3,[.25,.50,.78]); // France
+addBox(-10,2,10,5,3,4,[.55,.55,.60]); // Iceland
+addBox(11,2,11,5,3,4,[.52,.27,.12]); // Greece
+coaster(18,-18,7,[.18,.18,.20]); coaster(-17,15,6,[.55,.12,.08]); coaster(18,15,5,[.10,.28,.55]);
+addBox(18,3,-18,2.8,3,2.8,[.22,.23,.27]); // Silver Star station
+addBox(-17,3,15,3,2.5,3,[.10,.15,.20]); // blue fire
+addBox(18,3,15,3.5,2.8,3.5,[.48,.38,.20]); // Voltron
+for(let x=-26;x<=26;x+=5) for(let z=-36;z<=28;z+=7) if(Math.random()>.18) tree(x,z,.8+Math.random()*.4);
+for(let z=-35;z<28;z+=6){lamp(-3.2,z);lamp(3.2,z)}
+const pos={x:0,y:1.0,z:-36}, cam={yaw:0,pitch:-.15,dist:7};
+let moveX=0,moveY=0,keys={}; const joy=document.getElementById('joy'),knob=document.getElementById('knob');
+function joyMove(e){let r=joy.getBoundingClientRect(),x=e.clientX-r.left-r.width/2,y=e.clientY-r.top-r.height/2,m=Math.min(46,Math.hypot(x,y)),a=Math.atan2(y,x);x=Math.cos(a)*m;y=Math.sin(a)*m;knob.style.transform=`translate(${x}px,${y}px)`;moveX=x/46;moveY=y/46}
+joy.onpointerdown=e=>{joy.setPointerCapture(e.pointerId);joyMove(e)};joy.onpointermove=e=>{if(e.buttons)joyMove(e)};joy.onpointerup=joy.onpointercancel=()=>{moveX=moveY=0;knob.style.transform='translate(0,0)'};
+addEventListener('keydown',e=>keys[e.key.toLowerCase()]=1);addEventListener('keyup',e=>keys[e.key.toLowerCase()]=0);
+let sx=0,sy=0; canvas.onpointerdown=e=>{sx=e.clientX;sy=e.clientY}; canvas.onpointermove=e=>{if(e.buttons){cam.yaw-=(e.clientX-sx)*.006;cam.pitch=Math.max(-.9,Math.min(.5,cam.pitch-(e.clientY-sy)*.004));sx=e.clientX;sy=e.clientY}};
+document.getElementById('cam').onclick=()=>cam.yaw+=Math.PI/2;
+document.getElementById('reset').onclick=()=>{pos.x=0;pos.z=-36;cam.yaw=0;cam.pitch=-.15};
+function perspective(fov,asp,n,f){let t=Math.tan(fov/2),m=new Float32Array(16);m[0]=1/(asp*t);m[5]=1/t;m[10]=-(f+n)/(f-n);m[11]=-1;m[14]=-(2*f*n)/(f-n);return m}
+function look(eye,center){let z=[eye[0]-center[0],eye[1]-center[1],eye[2]-center[2]],l=Math.hypot(...z);z=z.map(v=>v/l);let x=[z[2],0,-z[0]],xl=Math.hypot(...x);x=x.map(v=>v/xl);let y=[z[1]*x[2]-z[2]*x[1],z[2]*x[0]-z[0]*x[2],z[0]*x[1]-z[1]*x[0]];return new Float32Array([x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-(x[0]*eye[0]+x[1]*eye[1]+x[2]*eye[2]),-(y[0]*eye[0]+y[1]*eye[1]+y[2]*eye[2]),-(z[0]*eye[0]+z[1]*eye[1]+z[2]*eye[2]),1])}
+function model(x,y,z){let m=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,x,y,z,1]);return m}
+const pb=buf(verts,ap,3),nb=buf(norms,an,3),ib=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(indices),gl.STATIC_DRAW);
+function resize(){let d=devicePixelRatio||1,w=innerWidth*d,h=innerHeight*d;if(canvas.width!=w||canvas.height!=h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h)}} 
+function loop(){
+ resize(); gl.enable(gl.DEPTH_TEST);gl.clearColor(.45,.67,.80,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+ let kx=(keys.d?1:0)-(keys.a?1:0)+moveX, ky=(keys.w?1:0)-(keys.s?1:0)-moveY; let l=Math.hypot(kx,ky);if(l){kx/=l;ky/=l;let sp=.13;pos.x+=Math.cos(cam.yaw)*kx*sp+Math.sin(cam.yaw)*ky*sp;pos.z+=Math.sin(cam.yaw)*kx*sp-Math.cos(cam.yaw)*ky*sp}
+ pos.x=Math.max(-30,Math.min(30,pos.x));pos.z=Math.max(-40,Math.min(30,pos.z));
+ let eye=[pos.x-Math.sin(cam.yaw)*Math.cos(cam.pitch)*cam.dist,pos.y+3.2+Math.sin(cam.pitch)*cam.dist,pos.z+Math.cos(cam.yaw)*Math.cos(cam.pitch)*cam.dist];
+ gl.useProgram(pr);gl.uniformMatrix4fv(uP,false,perspective(1.05,canvas.width/canvas.height,.1,150));gl.uniformMatrix4fv(uV,false,look(eye,[pos.x,pos.y+.7,pos.z]));gl.uniform3f(uS,-.4,1,.5);
+ for(let o of objects){gl.uniformMatrix4fv(uM,false,model(0,0,0));gl.uniform3fv(uC,o.c);gl.drawElements(gl.TRIANGLES,o.count,gl.UNSIGNED_SHORT,o.start*2)}
+ // player: simple capsule-like body
+ addBox // keep engine static; player is represented by HUD marker in view
+ let d=Math.hypot(pos.x,pos.z);document.getElementById('area').textContent=d<8?'Eingang':pos.x>8?'Frankreich / Voltron':pos.x<-8?'Island / blue fire':'Deutschland / Hauptweg';
+ requestAnimationFrame(loop)
+}
+loop();
+</script>
+</body></html>
